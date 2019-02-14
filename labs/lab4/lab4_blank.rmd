@@ -1,0 +1,209 @@
+---
+title: "Stat 151A Lab 4"
+author: "Bryan Liu"
+date: "September 14, 2018"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+  pdf_document:
+    toc: yes
+urlcolor: blue
+---
+
+This lab is adapted from Billy Fang, a previous GSI for this course. 
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  cache=TRUE, warning=FALSE, error=FALSE, message=FALSE, echo=TRUE, 
+  results = 'markup', dev='png', dpi=150
+)
+```
+
+# The bodyfat dataset 
+
+### Let us load the dataset: 
+```{r}
+bodyfat <- read.csv("./Bodyfat.csv")
+head(bodyfat)
+```
+```{r}
+# some quick EDA
+pairs(bodyfat)
+
+# OK lets just focus on a few 
+pairs(~bodyfat + Neck + Abdomen, data=bodyfat)
+```
+
+# Run a regression
+```{r}
+y <- bodyfat$bodyfat
+X <- cbind(1, bodyfat[, c("Weight", "Height", "Abdomen")])
+p <- 3
+n <- length(y)
+X <- as.matrix(X)
+beta_hat <- solve(t(X) %*% X, t(X) %*% y)
+# check beta_hat
+beta_hat
+```
+### Recall some definitions: 
+Sums upon sums of quantities. 
+
+\begin{align}
+  \text{RSS} &= \|y - \hat y\|^2 = \sum_{i=1}^n (y_i - \hat y_i)^2\\
+  \text{RegSS} &= \|\hat y - \bar y\|^2 = \sum_{i=1}^n (\hat y_i - \bar y)^2 \\
+  \text{TSS} &= \|y - \bar y\|^2 = \sum_{i=1}^n (y_i - \bar y)^2 
+\end{align}
+
+Note that $\text{RSS} + \text{RegSS} = \text{TSS}$. 
+
+And we define the $R^2$ statistic to be 
+$R^2 = \text{RegSS} / \text{TSS}$. 
+
+```{r}
+# compute the following quantities mathematically:
+# yhat
+
+# residuals e
+
+# ybar
+
+# RSS
+
+# RegSS
+
+# TSS
+
+# check if RegSS + RSS = TSS
+
+# R^2
+
+```
+
+There's also something called the adjusted $R^2$. Its given by 
+\begin{align}
+  R^2_{adj} = 1 - (1 - R^2) \frac{n-1}{n-p-1}
+\end{align}
+
+```{r}
+# adjusted R^2 value
+R2_adj <- 1 - (1 - R2) * (n - 1) / (n - p - 1)
+R2_adj
+```
+
+Note that it penalizes for models with more covariates, that is, as $p$ increases. Why might this be a good idea?
+
+Hint/side-note: show that the (unadjusted) $R^2$ $always$ increases as you add another covariate. 
+
+
+### We can do all these computations using the lm() function
+```{r}
+fit <- lm(bodyfat ~ Weight + Height + Abdomen, data=bodyfat)
+summary(fit)
+```
+
+How do we interpret the residual standard error?
+Do the $R^2$ and adjusted $R^2$ match with what we computed?
+
+### Regression Diagnostics
+In previous labs, we have assessed model performance by looking at residual plots. In lecture, standardized, or studentized, residuals were introduced as another regression diagnostic. What was the motivation for computing standardized residuals?
+
+It is useful to look at standardized residuals when fitting a linear model. Investigate the standardized residuals for this model; what can we conclude?
+```{r}
+# obtain standardized/studentized residuals
+
+# make plots of standardized/studentized residuals
+
+```
+
+It is also useful to assess the leverage of observations in our model. Leverage is measured by "hat values", the values of the hat matrix, and they give you an idea of the influence of each point on the regression line.
+```{r}
+# find leverages/hat values for our data in this model
+
+# plot and assess
+# a rule of thumb is that observations with leverage > 3*average leverage are bad
+
+```
+
+We will talk about hypothesis testing and those p-values and ***s next.  
+
+# Hypothesis testing
+Recall that under the normal model $y = X\beta + \epsilon$ with $\epsilon \sim \mathcal{N}(0, \sigma^2 I_{n\times n})$, the mean of $\hat\beta$ is $\beta$, and the covariance matrix of $\hat\beta$ is $\sigma^2(X^TX)^{-1}$. 
+
+Thus, the variance of $\hat\beta_j$ is $\sigma^2\nu_{jj}$, where $\nu_{jj}$ is the $j$the diagonal element of $(X^TX)^{-1}$. 
+
+Thus, if we want to test the null hypothesis 
+\begin{align}
+H_0 : \beta_j^* = \beta_j^{(0)}
+\end{align}
+then thh statistic 
+\begin{align}
+\frac{\hat\beta_j- \beta^*_j}{\sigma \sqrt{\nu_{jj}}}
+\end{align}
+is standard normal under the null hypothesis. But we usually do not know $\sigma^2$. 
+
+What now? Well we use an estimate of $\sigma^2$. In lecture, we showed that 
+\begin{align}
+\hat\sigma^2 = \frac{RSS}{n - p - 1}
+\end{align}
+is an unbiased estimator for $\sigma^2$. 
+Hence, we can estimate the standard error of $\hat\beta_j$ using $\hat \sigma \nu_{jj}$. And then it turns out that 
+\begin{align}
+  t = \frac{\hat\beta_j- \beta^*_j}{\hat\sigma \sqrt{\nu_{jj}}}
+\end{align}
+is a $t$-distribution with $n - p - 1$ degrees of freedom. We can use this to test the null hypothesis. If $|t|$ is large, then we can reject the null hypothesis. 
+
+`lm()` also does a $t$-test for each coefficient, testing $H_0: \beta_j = 0$. Let us do the `weight` coefficient by hand. 
+
+```{r}
+# estimate for sigma
+V <- solve(t(X) %*% X)
+sigma_hat <- sqrt(RSS / (n - p - 1))
+sigma_hat
+
+# estimate for standard error of \hat\beta
+se <- sigma_hat * sqrt(V[2, 2])
+se
+
+# t statistic
+t <- beta_hat[2] / se
+t
+
+# pvalue
+pval <- 2 * pt(t, n - p - 1)
+pval
+
+```
+
+```{r}
+# recall the lm() output
+summary(fit)
+```
+
+## F-test for all slopes
+`lm()` also tests the global null hypothesis that all slopes are zero. 
+\begin{align}
+H_0 : \beta_1 = \beta_2 = ... = \beta_p = 0
+\end{align}
+
+Under this null hypothesis, the statistic 
+\begin{align}
+F_0 = \frac{RegSS / p}{RSS / (n - p - 1)}
+\end{align}
+follows an $F$-distribution with $p$ and $n - p - 1$ degrees of freedom. If $F_0$ is large, we reject the null hypothesis. 
+
+```{r}
+# the F statistic
+Fstat <- (RegSS / p) / (RSS / (n - p - 1))
+Fstat
+
+# the p-value
+pval <- 1 - pf(Fstat, p, n - p - 1)
+pval
+```
+Does it match the summary fit?
+
+
+
+

@@ -1,0 +1,115 @@
+---
+title: "Stat 151A Lab 1"
+author: "Stephanie DeGraaf"
+date: "August 24, 2018"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+urlcolor: blue
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  cache=TRUE, warning=FALSE, error=FALSE, message=FALSE, echo=TRUE, 
+  results = 'markup', dev='png', dpi=150
+)
+```
+
+## Getting Started with R
+* Install [R](http://www.r-project.org) and (recommended) [R Studio](http://www.rstudio.com)
+* For writing reports, [R Markdown](rmarkdown.rstudio.com) is a nice, beautiful format that integrates code, R output, plots, and text.
+* If completely new to programming and R, the [R Cookbook](http://shop.oreilly.com/product/9780596809164.do) is an excellent resource that starts at the very beginning and covers the basics of programming and R functions.
+
+## Working with Data
+### Bodyfat dataset
+This is a dataset studying various body measurements as they relate to the percentage of body fat determined by underwater weighing for 252 men.
+
+Body fat is an important health measurement. 
+However, accurate measurement of body fat is inconvenient and costly. Thus, it is 
+desirable to have easy methods of estimating body fat that are not as
+inconvenient or costly. Body fat can be estimated from tables
+using age and various skin-fold measurements obtained by using a
+caliper. Other estimates can be obtained from predictive equations using body 
+circumference measurements (e.g. abdominal circumference) and/or skin-fold
+measurements.
+
+### Loading the dataset
+Download the dataset from [here](https://staff.pubhealth.ku.dk/~tag/Teaching/share/data/Bodyfat.html) or from bcourses. Make sure it is in your current working directory. If not, move the file or change your working directory with setwd().
+```{r}
+setwd("~/Dropbox/Berkeley/151A/")
+bodyfat<- read.csv("Bodyfat.csv")
+head(bodyfat)
+```
+
+To understand what information the data is giving us, we need to understand what the variable names mean.
+From the data description, we find that the variables are:
+
+* Density determined from underwater weighing
+* Percent body fat from Siri's (1956) equation
+* Age (years)
+* Weight (lbs)
+* Height (inches)
+* Neck circumference (cm)
+* Chest circumference (cm)
+* Abdomen 2 circumference (cm)
+* Hip circumference (cm)
+* Thigh circumference (cm)
+* Knee circumference (cm)
+* Ankle circumference (cm)
+* Biceps (extended) circumference (cm)
+* Forearm circumference (cm)
+* Wrist circumference (cm)
+
+## Visualizing Data
+
+### Variable Exploration
+It is always a good idea to take a look at your data to make sure everything looks reasonable (variable names make sense, measurement units are correct, there are no absurd outliers).
+```{r}
+summary(bodyfat)
+hist(bodyfat$Biceps)
+boxplot(bodyfat$Biceps)
+```
+
+Boxplots are great for identifying potential outliers. We can investigate the bicep outlier further.
+```{r}
+outlier<- which.max(bodyfat$Biceps)
+bodyfat[outlier,]
+```
+
+It is sometimes a good idea to remove outliers from data, especially if that observation is an outlier across many different variables. To remove outlier rows, identify the indices of the outliers, then simply use 
+```{r, eval = FALSE}
+bodyfat[-outlier,]
+```
+
+### Relationships between variables
+Scatterplots are useful to explore the relationship between two variables.
+```{r}
+plot(bodyfat$Biceps, bodyfat$Forearm)
+```
+
+We can look at all possible relationships using the pairs function.
+```{r, fig.height=10, fig.width=10}
+pairs(bodyfat)
+```
+
+From these scatterplots, we can see many strong correlations. Weight looks correlated with many other variables. Body measurements appear correlated according to body location.
+
+### Coplots
+How can we make sense of these many correlations? A coplot is a helpful way to visualize the relationship between two variables, conditioned on a third variable.
+
+We might be interested in predicting bodyfat by neck and abdominal circumference.
+```{r}
+pairs(~bodyfat + Neck + Abdomen, data = bodyfat)
+```
+
+Both neck and abdominal circumference seem to be good predictors of bodyfat. Are both variables necessary for prediction, or are they telling us the same information?
+
+```{r}
+coplot(bodyfat ~ Neck | Abdomen, data = bodyfat, rows = 1)
+```
+
+Here we see that each scatterplot does not show a clear trend. This indicates that knowing the neck circumference does not give us much more information about bodyfat than we have from knowing abdominal circumference. Thus, if we know the abdomen circumference, the neck circumference does not improve our prediction of bodyfat. 

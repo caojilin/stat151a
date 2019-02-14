@@ -1,0 +1,387 @@
+---
+title: "Stat 151A Lab 5"
+author: "Stephanie DeGraaf"
+date: "September 21, 2018"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+  pdf_document:
+    toc: yes
+urlcolor: blue
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  cache=TRUE, warning=FALSE, error=FALSE, message=FALSE, echo=TRUE, 
+  results = 'markup', dev='png', dpi=150
+)
+```
+
+## Wages dataset (Review)
+Let's consider again the cross-sectional wage data sampled from the 1976 US Population Survey[^1]. It consists of 526 observations of average hourly wages, and 
+various covariates such as education, race, gender, or marital status. 
+
+[^1]: Wooldridge, J.~M. (2000), Introductory Econometrics: A Modern Approach, South-Western College Publishing.
+
+```{r}
+# uncomment the install.packages if you do not have this package
+# install.packages('wooldridge')
+require('wooldridge')
+data('wage1')
+head(wage1)
+```
+
+In previous labs, we've seen that wages differ according to many of the explanatory variables, indicating that multiple regression is appropriate for analysis of this dataset. In this lab, we will use hypothesis testing to get a sense of which variables are significant.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+# Recall that wages vary by education, experience, gender, etc.
+ggplot(wage1, aes(x= educ, y = log(wage))) + geom_point()+
+  geom_smooth(method = "lm", se = F)
+ggplot(wage1, aes(x= tenure, y = log(wage))) + geom_point()+
+  geom_smooth(method = "lm", se = F)
+ggplot(wage1) + geom_boxplot(aes(x=factor(female), y = log(wage))) +
+  labs(x = "Gender") + scale_x_discrete(labels = c("Men", "Women"))
+ggplot(wage1) + geom_boxplot(aes(x=factor(nonwhite), y = log(wage))) +
+  labs(x = "Race") + scale_x_discrete(labels = c("White", "Nonwhite"))
+```
+
+Visual exploration of our variables indicates that some have greater effects than others. How can we determine which variables have statistical significance?
+
+## Hypothesis Testing (Review)
+### t-test for individual coefficients
+Recall that under the normal model $y = X\beta + \epsilon$ with $\epsilon \sim \mathcal{N}(0, \sigma^2 I_{n\times n})$, the mean of $\hat\beta$ is $\beta$, and the covariance matrix of $\hat\beta$ is $\sigma^2(X^TX)^{-1}$. 
+
+Thus, the variance of $\hat\beta_j$ is $\sigma^2\nu_{jj}$, where $\nu_{jj}$ is the $j$th diagonal element of $(X^TX)^{-1}$. 
+
+Thus, if we want to test the null hypothesis 
+\begin{align}
+H_0 : \beta_j^* = \beta_j^{(0)}
+\end{align}
+we use the statistic 
+\begin{align}
+  t = \frac{\hat\beta_j- \beta^*_j}{\sqrt{\frac{RSS}{(n-p-1)}} \sqrt{\nu_{jj}}}
+\end{align}
+which has a $t$-distribution with $n - p - 1$ degrees of freedom. We can use this to test the null hypothesis. If $|t|$ is large, then we can reject the null hypothesis. 
+
+`lm()` computes the standard errors for each coefficient $\hat{\beta_j}$ and also does a $t$-test for each coefficient, testing 
+\[H_0: \beta_j = 0.\]
+
+### F-test for all coefficients
+`lm()` also tests the global null hypothesis that all coefficients are zero. 
+\begin{align}
+H_0 : \beta_1 = \beta_2 = ... = \beta_p = 0
+\end{align}
+
+Under this null hypothesis, the statistic 
+\begin{align}
+F_0 = \frac{RegSS / p}{RSS / (n - p - 1)}
+\end{align}
+follows an $F$-distribution with $p$ and $n - p - 1$ degrees of freedom. If $F_0$ is large, we reject the null hypothesis. 
+
+## Hypothesis Testing in R
+Let's use multiple linear regression to model log wages by education, experience, gender, and race.
+```{r}
+model<- lm(lwage~educ+exper+female+nonwhite, data = wage1)
+summary(model)
+```
+What are the estimates of each coefficient?  
+What are their standard errors?  
+What are the t-statistics and p-values? What do these tell us?  
+Which variables are significant?  
+What is the residual standard error? How is it calculated?
+
+* RSE = square root of mean square error, $RSE = \sqrt{RSS/n-p-1}$. This is the average of the squared errors - smaller is better. This is important for model selection.
+
+How can we determine if this is a good model?  
+What do the asterisks/"significance codes" in the last column mean?
+
+How would we compute the information without using the lm function?
+```{r}
+# Compute the coefficient, standard error, t-statistic, and p-value for Education:
+X<- as.matrix(cbind(1, wage1[,c("educ", "exper", "female", "nonwhite")]))
+y<- wage1$lwage
+beta_hat<- solve(t(X) %*% X, t(X) %*% y)
+V <- solve(t(X) %*% X)
+yhat<- X %*% beta_hat
+RSS = sum((y - yhat)^2)
+RSE = sqrt(RSS/(526-4-1))
+
+beta_educ<- beta_hat[2]
+beta_educ
+se_educ<- RSE * sqrt(V[2,2])
+se_educ
+t_educ<- beta_educ / se_educ
+t_educ
+pval_educ<- 2*(1-pt(t_educ, 526-4-1))
+pval_educ
+
+#compare to what we got from lm():
+summary(model)$coefficients[2,]
+```
+
+### Discussion Time
+P-values are probabilities. What probability is this? How do we interpret each p-value? (Maybe you want to draw a picture)
+
+* Pvalue is the probability under the null hypothesis of seeing a t-statistic as large as we did, visualize with t-distribution
+
+What is the difference between the t-tests and F-test?  
+
+* t-test is for individual coefficients, whereas F-test is a global hypothesis and can also be used to compare two different models
+
+Why do we need t-tests if we have the F-test?  
+
+* t-tests provide more specificity by telling you which coefficients are important/making the model significant
+
+Why do we need the F-test if we can just do t-tests?  
+
+* sometimes individual coefficients are not significant by themselves, but all together they result in a significant F-test. (Sometimes this is a sign that you've included too many variables in your model, and there are dependencies among your variables.)
+* The F-test is really useful for (nested) model comparisons, when we want to see if it is helpful to add more variables to a model that already has some variables.
+
+### F-test for nested models
+The F-test is very helpful for model comparisons when we don't know which variables to include. 
+
+Recall that for a given model $M$ with $k+p$ parameters and a sub-model $m$ with $k$ parameters, we can test that model $M$ is significantly better at predicting $y$ with an F-test, given by 
+\[ \frac{RSS(m) - RSS(M)}{RSS(M)/(n-(k+p+1))} \sim F_{p, n-(k+p+1)} \]
+
+Let's use the F-test to compare some potential models:
+
+* Model 1: log wages ~ education + experience
+* Model 2: log wages ~ education + experience + gender
+* Model 3: log wages ~ education + experience + gender + race
+
+```{r}
+model1<- lm(lwage~educ + exper, data = wage1)
+model2<- lm(lwage~educ + exper + female, data = wage1)
+anova(model1, model2)
+```
+What does the output mean? Which model should we choose?
+
+We can also use anova to compare more than 2 models at a time.
+```{r}
+model3<- lm(lwage~educ + exper + female + nonwhite, data = wage1)
+anova(model1, model2, model3)
+```
+What does the output mean? Which model should we choose?
+
+* Model 2 is the best: adding the nonwhite variable did not make a significant improvement.
+* RSS is the sum of squared errors. RSS will always decrease if we add more variables.
+* Note how the RSS is changing: each model is trying to explain more of the variation in $y$ by adding in an additional variable. The RSS tells us how successful the additional models were at reducing the RSS. 
+* The Sum of Sq column tells us the difference in RSS from one model to the next. 
+* The F statistic and p-value tells us whether this reduction in RSS was significant.
+
+We can also compare more interesting models, besides adding one variable at a time. Suppose we are interested in the effect of region on wage. Consider two models:
+
+* Model 1: lwage ~ educ + exper + female
+* Model 2: lwage ~ educ + exper + female + northcen + south + west
+
+Here we are comparing 6 parameters to 3 parameters. 
+Is the model with region information better? Conduct an F-test to find out.
+```{r}
+# use an f-test to compare model 1 and model 2
+region_model<- lm(lwage~educ+exper+female+northcen+south+west, data = wage1)
+sub_model<- lm(lwage~educ+exper+female, data = wage1)
+anova(sub_model, region_model)
+```
+Does adding region information help?
+
+Now conduct t-tests for the individual coefficients in the model with region information.
+```{r}
+# use t-tests to test each of the region coefficients for significance
+summary(region_model)
+```
+Are the region variables significant? Does this contradict the conclusion from the F-test?
+
+* None of the region variables are significant. This shows the advantage of using the F-test. Individually, the region variables are not significant, but as a whole, they make for a significantly better model. 
+* This also demonstrates the importance of not using strict p-value cutoffs to determine whether to include variables in your model. There are many reasons to keep covariates in your model even if they are not significant.
+
+## Additional Regression Variables
+It is often helpful to use polynomial terms and interaction terms in a regression model. Homework 4 will explore this more in depth.
+
+### Interaction Terms
+When should we add an interaction?  
+
+* Interactions account for different relationships between two variables based on a third variables. In other words, the slope of a regression line changes depending on an additional variable.  
+* For example, we know that wages increase as experience increases. But we also expect that the rate of salary increase differs across professions: for instance, legal and finance professionals might enjoy high raises each year, whereas workers in education see a lower rate of salary increase per year. 
+
+Based on the variables in the dataset and your knowledge of labor economics, discuss possbile interactions that we might find in the data and want to include in a model. How might we visualize these interactions?
+```{r}
+# visualize potential interaction effects:
+# no intercept difference, clear interaction
+ggplot(wage1, aes(x = tenure, y = lwage)) + geom_point() + 
+  facet_wrap(~nonwhite, scales = "free_x") +
+  geom_smooth(method = "lm", se = F)
+ggplot(wage1, aes(x = exper, y = lwage)) + geom_point() + 
+  facet_wrap(~female, scales = "free_x") +
+  geom_smooth(method = "lm", se = F)
+ggplot(wage1, aes(x = exper, y = lwage)) + geom_point() + 
+  facet_wrap(~trade, scales = "free_x") +
+  geom_smooth(method = "lm", se = F)
+
+# clear intercept difference, no clear interaction effect
+ggplot(wage1, aes(x = educ, y = lwage)) + geom_point() + 
+  facet_wrap(~female, scales = "free_x") +
+  geom_smooth(method = "lm", se = F)
+```
+
+How can we determine whether an interaction is signficant?
+```{r}
+model<- lm(lwage ~ educ+exper+female+nonwhite+ 
+             exper*female + exper*nonwhite, data = wage1)
+summary(model)
+```
+How do we interpret these coefficients?  
+Holding education constant, for each additional year of experience, how much would we expect wages to increase for a white male? How much for a white female? For a nonwhite male? For a nonwhite female?
+
+### Quadratic Terms
+Why might we want to include a quadratic term?
+Consider the tenure variable in this dataset. Does it appear linear?
+```{r}
+ggplot(wage1, aes(x= tenure, y = log(wage))) + geom_point()
+# How should we model this variable? line or curve?
+ggplot(wage1, aes(x= tenure, y = log(wage))) + geom_point()+
+  geom_smooth(method = "loess", se = F, span = 1) +
+  geom_smooth(method = "lm", se = F, color = "red")
+```
+What is the intuition behind the quadratic trend?  
+
+* Wage increases with tenure as people become more experienced and stay at their job longer. However, at the higher years of tenure, wage starts to increase at decreasing rate. 
+(This could happen for many reasons: perhaps they've reached the maximum wage level at their job, or they're happy with their position and choose not to take promotions, or their health declines with age and slows their rate of salary increase, etc.) 
+* This *life-cycle effect* suggests that the relationship between wage and tenure is inverted U-shaped. In general, we would expect the coefficient on $tenure$ to be positive and on $tenure^2$ to be negative. 
+* The point here is that there should be some theoretical basis /empirical justification for including the square of a variable. (Do some visual exploration of your data, or talk with experts in the field about your variables.)
+
+What other variables might we consider modeling with a quadratic?
+
+Let's include the square of tenure in our model:
+```{r}
+model<- lm(lwage~educ+tenure+tenursq, data = wage1)
+summary(model)
+```
+How can we interpret these coefficients?
+
+* Each additional year of tenure increases log wages by 5 cents (or increases wages by 5 percent).
+* Each additional year of tenure reduces the slope (rate of increase in log wages) by .099 cents. 
+
+
+### Simulation experiment
+Interactions are important. What happens when we fail to account for an interaction effect?
+
+First, let's set up a simulation and check that coefficients are unbiased in the multiple regression setting when we have interactions.
+```{r}
+# True parameters (unknown)
+beta0 = 32
+beta1 = 1.5
+beta2 = 0.1
+beta3 = 3
+# draw data according to the linear regression model. 
+n_obs <- 100 # number of observations 
+sig <- 6 # std error of the y's
+# draw x's: they will be fixed for our experiment
+x1 <- runif(n_obs, 0, 10) 
+x2 <- round(runif(n_obs, 0, 1)) 
+```
+
+For example, we might consider our $x$ variables to be
+
+* $x1$ = years of experience
+* $x2$ = 0/1 dummy variable for y/n college degree, or gender, or nonwhite, or ...
+* the interaction $x1*x2$ says wages increase at a different rate as years of experience increase, depending on your x2 (degree/gender/race)
+
+```{r}
+draw_data <- function(x1, x2, beta0, beta1, beta2, beta3, sig){
+  n_obs <- length(x1)
+  # draw y's 
+  y = rnorm(n_obs, mean = beta0 + beta1*x1 + beta2*x2 + beta3*x1*x2, sd = sig) 
+  return(data.frame(x1 = x1, x2 = x2, y = y))
+}
+dataset <- draw_data(x1,x2, beta0, beta1, beta2, beta3, sig)
+head(dataset)
+```
+
+Let's compute the regression coefficients using our simulated dataset: 
+```{r}
+# Compute the regression coefficients from simulated data: 
+model<- lm(y ~ x1 + x2 + x1*x2, data = dataset)
+summary(model)
+# notice that estimates are not spot on, but within standard of error
+# also x2 is not significant
+```
+Is it unbiased? We can run a simulation to check: 
+```{r}
+# draw multiple datasets from the model
+# and for each dataset, recompute the regression coefficients. 
+n_trials <- 200
+intercepts <- rep(0, n_trials)
+X1_coefs <- X2_coefs <- X1X2_coefs<- rep(0, n_trials)
+for(i in 1:n_trials){
+  dataset <- draw_data(x1, x2, beta0, beta1, beta2, beta3, sig)
+  model <- lm(y ~ x1 + x2 + x1*x2, data = dataset)
+  intercepts[i] <- model$coefficients[1]
+  X1_coefs[i] <- model$coefficients[2]
+  X2_coefs[i] <- model$coefficients[3]
+  X1X2_coefs[i]<- model$coefficients[4]
+}
+```
+
+What are the distributions of our estimated coefficients?
+```{r}
+# examine distribution of the coefficients
+hist(intercepts)
+abline(v = beta0, col = "red")
+
+hist(X1_coefs)
+abline(v=beta1, col = "red")
+
+hist(X2_coefs)
+abline(v=beta2, col = "red")
+
+hist(X1X2_coefs)
+abline(v=beta3, col = "red")
+```
+
+Do our estimates appear unbiased?
+
+What happens when we forget to consider the interaction? Let's see what happens when we get the model wrong.
+```{r}
+lm(y ~ x1 + x2, data = dataset)
+# yikes
+```
+
+How bad is this? Run the simulation again, but this time fit a model only on x1 and x2, ignoring the interaction. Examine the distribution of the coefficients.
+```{r}
+# run the simulation again, still drawing data from the model y~x1+x2+x1*x2,
+# but this time fit a model only on x1+x2
+intercepts <- X1_coefs<- X2_coefs<- rep(0, n_trials)
+for(i in 1:n_trials){
+  dataset <- draw_data(x1, x2, beta0, beta1, beta2, beta3, sig)
+  wrong_model <- lm(y ~ x1+x2, data = dataset)
+  intercepts[i] <- wrong_model$coefficients[1]
+  X1_coefs[i] <- wrong_model$coefficients[2]
+  X2_coefs[i] <- wrong_model$coefficients[3]
+}
+
+# see what happens to the coefficients
+beta0
+mean(intercepts)
+beta1
+mean(X1_coefs)
+beta2
+mean(X2_coefs)
+hist(intercepts, breaks = 15, xlim = c(min(intercepts), 32))
+abline(v = beta0, col = "red")
+hist(X1_coefs, breaks = 15, xlim = c(1, max(X1_coefs)))
+abline(v = beta1, col = "red")
+hist(X2_coefs, breaks = 15, xlim = c(0, max(X2_coefs)))
+abline(v = beta2, col = "red")
+```
+Are the coefficients still unbiased if we get the model wrong (if we don't include $x1*x2$ in the model)?
+
+If we forget the interaction, how do our conclusions change? How might these be erroneous?
+
+* Without the interaction, we are saying that having a college degree gives you a higher salary overall, but your salary will increase at the same rate as years of experience increase as if you don't have a college degree. (But the truth in our simulation was that a college degree does not give you a higher starting salary, but your salary increases much faster as years of experience increase than without a degree.)
+
+## Homework 2
+Discuss any lingering problems.

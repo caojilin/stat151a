@@ -1,0 +1,171 @@
+---
+title: "Stat 151A Lab 12"
+author: "Bryan Liu"
+date: "November 9, 2018"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  cache=TRUE, warning=FALSE, error=FALSE, message=FALSE, echo=TRUE, 
+  results = 'markup', dev='png', dpi=150
+)
+```
+
+# Generalized linear models
+
+Suppose we have data $\{(x_1, y_1), ..., (x_n, y_n)\}$. Here, $x_n\in\mathbb{R}^p$ and $y\in \mathbb{R}$. For much of the class, we have considered modeling the data as $y_i \sim \mathcal{N}(x_i^T\beta, \sigma^2)$.
+
+This may not always be a reasonable model. For example, the responses $y_i$ might be binary. We might then model the probability of $y_i = 1$ as 
+$p_i = s(x_i^T\beta)$, where $s(x)$ is the sigmoid function, $s(x) = \frac{e^{x}}{1 + e^x}$. In other words, we have 
+
+\begin{align}
+y_i \sim \text{Bernoulli}\big(p_i = s(x_i^T\beta)\big)
+\end{align}
+
+This is known as **logistic regression**. 
+
+Why the choice of the sigmoid function for $p_i$? In class you showed that this falls out from the exponential family paramterization of the Bernoulli distribution. 
+
+But any function that maps the reals onto the interval 0 and 1 will work. So another common function to use is the inverse cdf function of a normal distribution, 
+$\Phi^{-1}$, and set $p_i = \Phi^{-1}(x_i^T\beta)$. This is known as **probit regression**. 
+
+The last example we shall consider is **Poisson regression**, where $y_i$ are counts (i.e., non-negative integers). Here, we model $y_i$ as 
+\begin{align}
+y_i \sim \text{Poisson}(\lambda_i = \exp(x_i^T\beta))
+\end{align}
+
+In words, expectation of $y_i$ is $\lambda_i = \exp(x_i^T\beta)$. 
+
+Again, why the exponential function? Any map from the reals to the positive reals can be used to model the mean here. The exponential function falls out of the exponential family paramterization of the Poisson. These link functions (the exponential, and the sigmoid discussed above), are known as "canonical link functions," canonical because they come from the exponential family paramterization. 
+
+## Example of logistic regression 
+
+We consider the `spam` dataset, [^1] where 4601 emails were collected and labeled as "spam" or "not spam" (ham). There are fifty-seven covariates collected for each email: 
+
+[^1]: https://archive.ics.uci.edu/ml/datasets/spambase
+
+* Counts of forty-eight keywords (e.g.money, free) in the email, divided by the total number of words in the email . 
+
+* Counts of six characters (e.g. #, $), in the email, divided by the total number of characters in the email . 
+
+* Longest length of of uninterrupted sequences of capital letters
+
+* Average length of uninterrupted sequences of capital letters
+
+* Total number of capital letters
+
+```{r}
+# load the data
+spam_data <- read.csv('./SPAM.csv')
+
+spam_data_train <- spam_data[spam_data$testid == FALSE, ]
+spam_data_train <- spam_data_train[, -2] # remove the testid column
+
+spam_data_test <- spam_data[spam_data$testid == TRUE, ]
+spam_data_test <- spam_data_test[, -2]
+
+head(spam_data)
+```
+
+We fit logistic regression: 
+```{r}
+logistic_model <- glm(spam ~ ., data = spam_data_train, family = binomial)
+summary(logistic_model)
+```
+
+Our prediction accuracy on the train set: 
+
+```{r}
+
+get_predictions <- function(logistic_model, data){
+  # returns binary predictions for the logistic model on given data
+  
+  # notice the type argument: this returns the probs
+  spam_probs <- 
+    predict(logistic_model, newdata = data, type = 'response')
+  
+  # our predictiosn for spam
+  spam_preds <- spam_probs > 0.5 
+  
+  return(spam_preds)
+}
+
+spam_preds  <- get_predictions(logistic_model, spam_data_train)
+
+# accuracy on the train set 
+mean(spam_preds == spam_data_train$spam)
+```
+Our prediction accuracy on the test set: 
+```{r}
+spam_preds_test <- get_predictions(logistic_model, spam_data_test)
+
+# accuracy on the test set 
+mean(spam_preds_test == spam_data_test$spam)
+```
+
+## Poisson regression 
+
+We consider a dataset where we have measurements of the redshifts and magnitudes (brightnesses) of galaxies.[^2] These measurements are binned: there are 18 bins for the brightnesses, and 15 bins for the redshifts. We count the number of galaxies in each bin. The data is shown in the 3D scatterplot below: 
+
+[^2]: galaxy data from https://web.stanford.edu/~hastie/CASI/index.html, table 8.5
+
+```{r}
+library("scatterplot3d") 
+
+load('./galaxy.RData')
+scatterplot3d(x = -galaxy_df$redshifts, 
+              y = galaxy_df$magnitudes, 
+              z = galaxy_df$counts, pch = 16, type="h", 
+              xlab = '-redshift', 
+              ylab = 'magnitude', 
+              zlab = 'counts')
+
+```
+
+This count data allows to visualize the joint distribution of redshifts and magnitudes. For example, most galaxies in this dataset have large redshifts and small magnitudes. 
+
+Suppose we wanted to smooth the counts in this dataset. We propose to do a Poisson regression, where $y_i$ is the number of galaxies in each bin, and we model the mean $\lambda_i$ of each bin as 
+
+$$
+\lambda_i = \exp(\beta_0 + \beta_1 \cdot \text{redshift} + \beta_2 \cdot \text{magnitude} + \beta_3 \cdot \text{redshift} \cdot \text{magnitude} + 
+                \beta_4 \cdot \text{magnitude}^2 + \beta_5 \cdot \text{redshift}^2 )
+$$
+and then 
+
+$$ 
+y_i \sim \text{Poisson}(\lambda_i)
+$$. 
+
+We run the Poisson regression: 
+```{r}
+# run poisson regression 
+galaxy_df$redshift2 <- galaxy_df$redshifts**2
+galaxy_df$magnitude2 <- galaxy_df$magnitudes**2
+galaxy_df$redshifts_magnitudes <- galaxy_df$redshifts * galaxy_df$magnitudes
+  
+
+poisson_glm <- glm(counts ~ ., data = galaxy_df, 
+                   family = poisson())
+
+summary(poisson_glm)
+```
+
+And we plot the $\lambda_i$ against the magnitude and redshifts.
+```{r}
+poisson_preds <- predict(poisson_glm, newdata = galaxy_df, 
+                        type = 'response')
+
+scatterplot3d(x = -galaxy_df$redshifts, 
+              y = galaxy_df$magnitudes, 
+              z = poisson_preds, pch = 16, type="h", 
+              xlab = '-redshift', 
+              ylab = 'magnitude', 
+              zlab = 'lambda')
+```
+
+We now have a smoothed distribution of counts fit using Poisson regression. 
