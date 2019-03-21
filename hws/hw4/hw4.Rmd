@@ -1,0 +1,419 @@
+---
+title: "HW04"
+author: "caojilin"
+date: "10/15/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("model4you")
+library(ggplot2)
+load("twoyear.rdata")
+twoyear = data[c("lwage","jc","univ","exper")]
+library(faraway)
+body = read.csv("Bodyfat.csv")
+body = body[c(2,3,4,5,10)]
+```
+###Problem 1  
+
+#####a$)$ Suppose X1,...,Xn are i.i.d observations from a distribution with known variance $\sigma^2$. Describe a bootstrap-based algorithm to compute a 95% confidence interval for $\sigma$. (0.5 points)
+
+First we calculate the estimate of $\sigma$, $\widehat\sigma$ from sample observations.
+Then we can do nonparametric bootstrap. 
+```
+Let N=5000
+vec = rep(0,N)
+for i = 1 to N: 
+    resample from sample with replacement
+    calculate estiamted sigma from resample and store it in vec[i]
+```
+or parametric bootstrap
+```
+Let N=5000
+vec = rep(0,N)
+for i = 1 to N: 
+    generate a sample from a known distribution with estimated sigma
+    calculate estiamted sigma from sample and store it in vec[i]
+```
+Now vec - $\sigma$ forms a distribution. We pick 2.5% and 97.5% percentile of this distribution $b_{0.025}$ and $b_{0.975}$, the confidence interval is $[\widehat\beta_i - b_{0.975},\widehat\beta_i-b_{0.025}]$  
+
+#####b$)$ Take M = 1000. For each i = 1,...,M, simulate n = 100 observations from a normal distribution with $\sigma$ = 1. Construct your confidence interval in the previous part and check if the interval contains the true value $\sigma$ = 1. For how many i = 1,...,M, does your interval contain the true value? (0.5 points)  
+
+For this problem, we can use nonparametric bootstrap.
+```{r}
+calc_CI =  function(samp, N=1000){
+  samp_sd = sd(samp)
+  vec = rep(0,N)
+  for (i in 1:N) {
+    # resample size does matter here!
+    resamp = sample(samp,length(samp), replace = TRUE)
+    vec[i] = sd(resamp)
+  }
+  b1 = quantile(vec-samp_sd,0.025)
+  b2 = quantile(vec-samp_sd,0.975)
+  # ci = quantile(vec,c(0.025,0.975))
+  ci = c(samp_sd - b2, samp_sd - b1)
+}
+```
+
+```{r}
+M= 1000
+count = 0
+for (i in 1:M) {
+  samp = rnorm(100,sd=1)
+  ci = calc_CI(samp)
+  if (ci[1]<=1 & ci[2]>=1)
+    count = count + 1
+  }
+count
+```
+
+
+
+###Problem 2
+```{r}
+lmod1 = lm(lwage ~ jc + univ + exper, data=twoyear)
+summary(lmod1)
+X = model.matrix(lmod1)
+sigma_square = 0.4301^2
+```
+
+<!-- cov($\widehat\beta$) -->
+```{r,echo=FALSE,eval=FALSE}
+cov_beta = sigma_square * solve(t(X) %*% X);cov_beta
+```
+null hypothesis H0 :$\widehat\beta_1 = \widehat\beta_2 \text{ is equivalent to } \widehat\beta_1 - \widehat\beta_2 = 0$
+
+#####a$)$ Find the value of the t-statistic for this test. Does the t-test reject the null hypothesis at the 95 % level? (0.5 points).
+
+$$\text{For } \beta_1 - \beta_2 = 0, \text{we can rewrite model as }\\
+y_i = \beta_0 + (\beta_1-\beta_2) jc +\beta_2 (jc + univ) + \beta_3 {expr}+ e_i,\\
+\text{which is the same as original model} \\
+y_i = \beta_0 + \beta_1 jc +\beta_2 univ + \beta_3 expr+ e_i$$
+
+
+<!-- t statistic is  -->
+<!-- \begin{align} -->
+<!-- \frac{\beta_1 - \beta_2}{s.e(\beta_1 - \beta_2)} -->
+<!-- \end{align} -->
+
+```{r,eval=FALSE,echo=FALSE}
+4.662411e-05 + 5.329279e-06 - 2*1.927585e-06
+0.0666967-0.0768762
+```
+<!-- \begin{align} -->
+<!-- s.e(\widehat\beta_1 - \widehat\beta_2) = \sqrt{var(\widehat\beta_1 - \widehat\beta_2)}=\sqrt{var(\widehat\beta_1) + var(\widehat\beta_2) - 2cov(\widehat\beta_1,\widehat\beta_2)} -->
+<!-- \end{align} -->
+
+<!-- \begin{align} -->
+<!-- s.e(\widehat\beta_1 - \widehat\beta_2)  = 4.809822e-05\\ -->
+<!-- \end{align} -->
+
+<!-- \begin{align} -->
+<!-- t = \frac{0.0666967-0.0768762}{4.809822e-05} = -211.6398 -->
+<!-- \end{align} -->
+
+<!-- p-value is `2*(1 - pt(-211.6398, df = 6759))`   -->
+
+```{r}
+lmod1 = lm(lwage ~ jc + I(jc+univ) + exper, data=twoyear)
+summary(lmod1)
+# lmod1 = lm(lwage ~ univ + I(jc+univ) + exper, data=twoyear)
+# summary(lmod1)
+```
+Now $\beta_1$ in this model here is $\beta_1 - \beta_2$ in original model we want to test for. We can directly read t-value, which is -1.468, it's p-value is 0.142, thus we cannot reject the null at a=5% level.
+
+
+#####b$)$ Find the value of the F-statistic for this test. Does the F-test reject the null hypothesis at the 95 %
+level? (0.5 points).
+
+$$\text{For } \beta_1 = \beta_2, \text{the model m becomes}\\
+y_i = \beta_0 + \beta_1 (x_{i1} + x_{i2}) + \beta_3 {x_{i3}} + \cdots + \beta_p {x_{ip}} + e_i$$
+we can use R to fit reduced model m
+```{r}
+lmod2 = lm(lwage ~ I(jc + univ) + exper, data=twoyear)
+summary(lmod2)
+```
+then f statistic is $$f_{1,6759} = \frac{RSS(m) - RSS(M)}{RSS(M)/(n-3-1)} \\ \text{where } n = 6763 \\ RSS(m) = 1250.942 \\
+RSS(M) = 1250.544$$
+```{r, echo=FALSE}
+ (rss(lmod2) - rss(lmod1))/(rss(lmod1)/6759)
+```
+and we get f = 2.154016, and p-value is `1 - pf(2.154016, df1=1,df2=6759)=0.142244`
+We do not reject the null at a=5% level
+
+#####c$)$ Design a permutation test for testing this hypothesis. Does your test reject the null hypothesis at the 95% level? (0.8 points).
+
+$$\text{For } \beta_1 - \beta_2 = 0, \text{we can rewrite model as }\\
+y_i = \beta_0 + (\beta_1-\beta_2) jc +\beta_2 (jc + univ) + \beta_3 {expr}+ e_i,\\
+\text{which is the same as original model} \\
+y_i = \beta_0 + \beta_1 jc +\beta_2 univ + \beta_3 expr+ e_i$$
+We can still use modified model and permute *jc* on new model, in this way we can test the null $\beta_1 - \beta_2 = 0$ and only permute one column
+```{r}
+# run the permutation test
+n_perm <- 1000
+beta_treat_vec <- rep(0, n_perm)
+observed_t = summary(lmod1)$coefficients[2,3]
+for(i in 1:n_perm){
+  ss= sample(twoyear$jc)
+  lmod_perm = lm(lwage ~ ss + I(jc + univ) + exper, data=twoyear)
+  beta_treat_vec[i] <- summary(lmod_perm)$coefficients[2,3]
+}
+
+# plot the histogram of the treatment coefficient under
+# the permutation distribution
+# red line was our originally computed statistic
+ggplot() + geom_histogram(aes(x = beta_treat_vec),
+                          color = 'blue', fill = 'light blue') +
+  geom_vline(xintercept = observed_t, color = 'red')
+
+```
+
+p-value is
+```{r}
+mean(abs(beta_treat_vec) >= abs(observed_t))
+```
+we do not reject the null
+
+#####d$)$ Construct a 95 % confidence interval for $\beta_1 - \beta_2$ via bootstrap. Does this interval contain the value zero? (0.8 points).
+
+```{r}
+full.model = lm(lwage ~ jc + univ + exper, data=twoyear)
+beta1 = full.model$coefficients["jc"]
+beta2 = full.model$coefficients["univ"]
+vec1 = rep(0,2000)
+#residual bootstrap, can we get any linear combinations?
+for(i in 1:2000){
+  e_temp = sample(full.model$residuals, nrow(twoyear),replace = TRUE)
+  new_y = X %*% full.model$coefficients + e_temp
+  tempmodel = lm(new_y ~ jc + univ + exper, data=twoyear)
+  vec1[i] = tempmodel$coefficients[2] - tempmodel$coefficients[3] 
+}
+```
+95% CI for $\beta_1 - \beta_2$ contains 0
+```{r}
+b1 = quantile(vec1-(beta1-beta2),0.025)
+b2 = quantile(vec1-(beta1-beta2),0.975)
+ci = c(beta1-beta2-b2, beta1-beta2-b1)
+names(ci) = c("","")
+ci
+```
+
+###Problem 3
+
+#####a$)$ Use R to report the usual normality based confidence intervals for each of $\beta_1, \cdots, \beta_4$ (0.4 points)
+
+```{r,echo=FALSE}
+lmod3 = lm(sr ~ pop15+ pop75 + dpi + ddpi,data=savings)
+summary(lmod3)
+```
+we use $$\widehat\beta_j \pm t^{a/2}_{n-p-1}s.e(\widehat\beta_j)\\
+t^{a/2}_{n-p-1}= qt(0.975,45)= 2.014103$$
+from $$\widehat\beta_1 \ to\ \widehat\beta_4$$ the 95% CI:
+
+$$-0.4611931 \pm 0.2913243$$
+$$-1.6914977 \pm 2.18248$$
+$$-0.0003369 \pm 0.001875$$
+$$0.4096949 \pm 0.395161$$
+
+#####b) Compute confidence intervals for$\beta_1, \cdots, \beta_4$ using residual bootstrap. How do these intervals compare with those in part (a) above? (0.8 points).
+
+```{r}
+vec_residual = lmod3$residuals
+beta_matrix = matrix(0,2000,5,byrow = TRUE)
+for (i in 1:2000) {
+  e_hat_i = sample(vec_residual,length(vec_residual),replace = TRUE)
+  y_i = model.matrix(lmod3) %*% lmod3$coefficients + e_hat_i
+  beta_matrix[i,] = lm(y_i ~ pop15 + pop75 + dpi + ddpi, data = savings)$coefficients - lmod3$coefficients
+}
+ma = matrix(0,5,2,byrow = TRUE)
+for (i in 1:5) {
+  a = quantile(beta_matrix[,i],0.025)
+  b = quantile(beta_matrix[,i],0.975)
+  ma[i,] = c(a,b)
+}  
+ma = as.data.frame(ma)
+colnames(ma) = c(0.025,0.975)
+```
+percentile matrix for $\beta_0, \cdots, \beta_4$
+```{r}
+ma
+```
+we use $$[\widehat\beta_i - b_{0.975},\widehat\beta_i-b_{0.025}]$$
+from $$\widehat\beta_1 \ to\ \widehat\beta_4$$ the 95% CI:
+
+<!-- $$(-0.4611931 - 0.265938589, -0.4611931 + 0.27539967) $$ -->
+<!-- $$(-1.6914977 - 2.019208551,-1.6914977+ 2.05918272)$$ -->
+<!-- $$(-0.0003369 - 0.001753912,-0.0003369 +0.00169497) $$ -->
+<!-- $$(0.4096949 - 0.366008023, 0.4096949 +0.34495835)$$ -->
+```{r}
+ci = matrix(0,4,2,byrow = TRUE)
+for (i in 1:4) {
+  ci[i,] = c(lmod3$coefficients[i+1]-ma[i+1,2],lmod3$coefficients[i+1]-ma[i+1,1])
+}
+ci
+```
+
+we found that these confidence intervals are **narrower** than part a)
+
+###Problem 4 how do we actually identify outliers? any standards?
+#####Comment on these plots. Based on these plots, assess whether there are any outliers in the dataset; are there any influential observations. (0.5 points)
+```{r}
+lmod4 = lm(bodyfat ~ Age +Weight + Height+Thigh,data=body)
+n = nrow(body)
+p = 4
+y = body$bodyfat
+X = model.matrix(lmod4)
+H = X %*% solve(t(X) %*% X) %*% t(X)
+e_hat = lmod4$residuals
+y_hat = H %*% y
+sigma_hat <- sqrt(sum(e_hat**2) / (n - p - 1))
+leverages = diag(H) 
+h_bar = (1+p)/n
+head(sort(leverages,decreasing = TRUE))
+
+plot(leverages)
+abline(b=0,a=2*h_bar,col="blue")
+abline(b=0,a=3*h_bar,col="red")
+
+text(x = 42,y=0.60373733-0.04,"#42")
+text(x = 39,y=0.17103211+0.04,"#39")
+```
+
+Index 39 and 42 subject have high leverage
+
+#####a$)$ Residuals against fitted values.
+```{r}
+fit_value = lmod4$fitted.values
+head(sort(fit_value,decreasing = TRUE))
+res = lmod4$residuals
+plot(res ~ fit_value,xlab="fitted values", ylab="residuals")
+text(fit_value[39],res[39]+3,"#39")
+text(fit_value[42],res[42]+3,"#42")
+```
+
+
+#####b$)$ Standardized Residuals against fitted values.
+```{r}
+e_hat_std <- e_hat / (sigma_hat * sqrt(1 - diag(H)))
+
+plot(e_hat_std ~ fit_value,xlab="fitted values", ylab = 'standardized residual')
+text(fit_value[39],e_hat_std[39]+0.5,"#39")
+text(fit_value[42],e_hat_std[42]+0.5,"#42")
+```
+
+#####c$)$ Residuals against Standardized Residuals.
+```{r}
+head(sort(res))
+plot(res ~ e_hat_std,xlab= "Standardized Residuals",ylab = "residuals")
+text(e_hat_std[42],res[42]+3,"#42")
+text(e_hat_std[39],res[39]+3,"#39")
+```
+
+#####d$)$ Predicted residuals against fitted values.
+```{r}
+e_hat_pred <- e_hat / (1 - diag(H))
+plot(e_hat_pred ~ fit_value, xlab = "fitted values",ylab = 'predicted residual')
+text(fit_value[39],e_hat_pred[39]+3,"#39")
+text(fit_value[42],e_hat_pred[42]+3,"#42")
+
+```
+
+#####e$)$ Residuals against predicted residuals.
+```{r}
+plot(e_hat ~ e_hat_pred,xlab="residuals",ylab="predicted residuals")
+text(e_hat_pred[39],e_hat[39]+3,"#39")
+text(e_hat_pred[42],e_hat[42]+3,"#42")
+
+```
+
+#####f$)$ Residuals against leverage.
+```{r}
+plot(e_hat~diag(H),xlab="leverage",ylab="residual")
+text(leverages[39],e_hat[39]+3,"#39")
+text(leverages[42],e_hat[42]+3,"#42")
+
+```
+
+#####g$)$ Predicted residuals against Standardized Predicted Residuals.
+```{r}
+e_hat_pred_std = e_hat_std * sqrt((n-p-2)/(n-p-1-e_hat_std^2))
+plot(e_hat_pred ~ e_hat_pred_std,xlab="Standardized Predicted Residuals",ylab="predicted residuals")
+text(e_hat_pred_std[39],e_hat_pred[39]+3,"#39")
+text(e_hat_pred_std[42],e_hat_pred[42]+3,"#42")
+
+```
+
+#####h$)$ Standardized residuals against Standardized Predicted residuals.
+```{r}
+# any convenient way to calculate RSS[i]?
+# RSS[i] = RSS-(ei^2/(1-hi))
+plot(e_hat_std ~ e_hat_pred_std,xlab="Standardized Predicted Residuals",ylab="predicted residuals")
+text(e_hat_pred_std[39],e_hat_std[39]+0.5,"#39")
+text(e_hat_pred_std[42],e_hat_std[42]+0.5,"#42")
+```
+
+#####i$)$ Cooks Distance against the ID number of the subjects.
+```{r}
+cooks.dist = cooks.distance(lmod4)
+plot(cooks.dist)
+text(39,cooks.dist[39]+0.5,"#39")
+text(42,cooks.dist[42]-0.5,"#42")
+```
+
+#####Comment on these plots. Based on these plots, assess whether there are any outliers in the dataset; are there any inuential observations. (0.5 points)  
+
+The index 39 and 42 points have high leverages. It's obviously to see in the residual against fitted values graph. Standardized residual graph also support this evidence. They also stand out in the other graphs.
+
+
+#####For each subject, calculate the p-value for testing whether the ith subject is an outlier based on the standardized predicted residual. Plot these p-values against the ID number of the subjects. How many of these p-values are less than 0.05? Does it make sense to rule all such subjects as outliers? (1 points)
+```{r}
+p_values = 2*(1-pt(abs(e_hat_pred_std),n-p-2))
+plot(p_values)
+abline(a=0.05,b=0,col="blue")
+sort(p_values[which(p_values<0.05)])
+```
+There are 11 points whose p-value less than 0.05. But it doesn't make sense to rule out all these points as outliers  
+
+do a **Bonferroni correction**
+```{r}
+p_values[which(p_values < 0.05/n)]
+```
+We found that only #42 stood out.
+
+
+#####Based on the analysis, does it make sense to fit the linear model with any of the subjects removed? If not,why not? If so, which ones; and in this case, report the summary for the linear model with the subjects removed. (1 points)
+
+we investigate these two points 39 and 42
+```{r}
+body[c(39,42),]
+hist(body$Weight)
+sd(body$Weight);mean(body$Weight)
+```
+
+And we see that on the weight histogram, subject 39's weight is 363.15 lbs, which is almost 6 standard deviation from mean of weight 178.9244. This is an unusualy observation, but other data looks legit. So this may be an error or a guy who is really this heavy
+
+```{r}
+hist(body$Height)
+```
+
+We notice that subject 42's height is weird, because how can one man's weight be 205 pounds and only 29.5 inches, which is 74.93 cm. This probably is an error in data.
+
+#####original model
+```{r}
+summary(lm(bodyfat ~ Age +Weight + Height+Thigh,data=body))
+```
+#####remove 42
+```{r}
+summary(lm(bodyfat ~ Age +Weight + Height+Thigh,data=body[-42,]))
+```
+
+#####remove both 42 and 39
+```{r}
+summary(lm(bodyfat ~ Age +Weight + Height+Thigh,data=body[c(-42,-39),]))
+```
+We see an increase R^2 in three models

@@ -1,0 +1,276 @@
+---
+title: "Stat 151A Lab 10"
+author: "Bryan Liu"
+date: "October 26, 2018"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  cache=TRUE, warning=FALSE, error=FALSE, message=FALSE, echo=TRUE, 
+  results = 'markup', dev='png', dpi=150
+)
+```
+
+```{r}
+library(tidyverse)
+library(MASS)
+library(leaps)
+
+set.seed(245234)
+```
+
+# Statistics is made up and nothing is real
+
+"If you torture the data long enough, it will confess." -- Ronald Coase
+
+This example is adapted from Freedman 1983[^1]. 
+
+[^1]: Freedman, D. A. (1983) "A note on screening regression equations." The American Statistician, 37, 152–155
+
+Suppose we have 500 observations with each $x_i \in \mathbb{R}^{100}$, and $y_i \in \mathbb{R}$. We draw $x_i \sim \mathcal{N}(0, I_{100 \times 100})$ and $y_i \sim \mathcal{N}(0, 1)$. In other words, OUR DATAFRAME IS JUST RANDOM, INDEPENDENT NOISE. Literally every entry in our dataframe is independent, and most crucially, the $y$'s have no relationship to the $x$'s. 
+
+We will run a regression on this dataset, and see what we get. 
+
+```{r}
+n <- 500 # number of observations
+p <- 100 # dimension of features
+
+# draw X 
+X <- matrix(rnorm(n * p), nrow = n)
+
+# draw y
+y <- rnorm(n)
+
+# create dataframe
+data_noise <- cbind(y, X)
+data_noise <- as.data.frame(data_noise)
+
+# fit regression
+full_model <- lm(y ~ ., data_noise)
+full_model_summary <- summary(full_model)
+
+full_model_summary
+```
+What are the true values for $\beta_0, ..., \beta_{100}$ in our data generating process? 
+
+What doe the $F$ statistic say? Is this consistent with our data generating process?
+
+Lets see how many $\hat\beta_i$'s were significantly different from 0. 
+```{r}
+# get p-values
+p_vals <- coef(full_model_summary)[, 'Pr(>|t|)']
+
+# print how many were less than 0.05 
+print(sum(p_vals < 0.05))
+```
+
+Is this surprising?
+
+Ok, so now lets do model selection by including only the coefficients with the top 3 p-values in the model. 
+```{r}
+# pick out top three coefficients
+which_top3 <- order(p_vals)[1:3]
+print(p_vals[which_top3])
+
+# and only run the regression on the coefficients with the top 3 p-values
+data_noise_selected <- data_noise[,  c('y', names(p_vals[which_top3]))]
+summary(lm(y ~ ., data = data_noise_selected))
+
+```
+What does the F-statistic say now??? (Remember, under our data generating process, was the null hypothesis true or false?)
+
+Fine, lets try something fancier than just picking coefficients with large p-values. In class we talked about doing stepwise search. Lets do a backwards search, with AIC as our criterion. R has a nice function for this. It'll suffice for our demonstration. 
+```{r}
+# this line takes a minute
+aic_selected_model <- stepAIC(full_model, direction = 'backward', 
+                              trace = FALSE)
+# print the result
+summary(aic_selected_model)
+```
+
+Observations about $F$ and/or $T$ statistics?
+
+# Anyyyyyway ...
+Lets pretend we did not see that and continue with this lab. 
+
+Note that that was a caution about *inference*. We can always use linear regression and whatever selection techniques we choose, if we are only aiming for *prediction*. 
+
+## (Information) Criteria
+In our model, we have a total of $p$ explainatory variables. Suppose we decide only to include a subset of $p' \leq p$ variables in our model. **How many possible models with $p'$ variables are there?**
+
+Suppose we can search through all the models with $p'$ explainatory variables. We need some criterion to determine which is best. 
+
+A quantity that shows up in many of the information criteria discussed in class is the log-likelihood of the linear model, with normal errors, at the estimates $\hat\beta$ and $\hat\sigma^2$. 
+
+Suppose $y \sim \mathcal{N}(X\beta, \sigma^2 I_{n\times n})$. Then the log-likelihood is given by 
+\begin{align}
+\log p(y ; \beta, \sigma^2)
+= - \frac{n}{2} \log(2 \pi \sigma^2) - \frac{\|y - X\beta\|^2}{2 \sigma^2}
+\end{align}
+
+**Check that $\hat\beta_{MLE} = (X^TX)^{-1}X^Ty$, and $\hat\sigma^2_{MLE} = RSS / n$ is the MLE**, that is, these formulae for $\hat\beta_{MLE}$ and $\hat\sigma_{MLE}^2$ maximize the log-likelihood. (Note that $\hat\beta_{MLE}$ is our usual formula obtained by solving the least squares formula; however, $\hat\sigma^2_{MLE} = RSS / n$ is not the familiar unbiased estimate for the variance. )
+
+So now let us list the criteria that we might use to select which model is best. Let $m$ denote the model, with $p(m)$ being the number of explainatory variables in the model: 
+
+* Adjusted $R^2$: 
+
+\begin{align}
+(\text{Adj. $R^2$})(m) := 1 - \frac{\text{RSS}(m) / (n - p(m) - 1)}{\text{TSS} / (n - 1)}
+\end{align}
+
+* AIC: 
+
+\begin{align}
+\text{AIC}(m)
+&:= - 2 \log(\text{max value of likelihood in $m$}) + 2(\text{number of parameters in $m$})
+\\
+&= n \log(2 \pi e) + n \log \left(\frac{\text{RSS(m)}}{n}\right) + 2(p(m)+1)
+\end{align}
+
+We compare AIC$(m)$ for all models $m$, so we can drop the constant $n\log(2\pi e)$ since it does not depend on $m$. Some implementations have different terms in computing their AIC . But they should differ by only an additive constant. 
+
+* BIC: 
+
+\begin{align}
+\text{BIC}(m)
+&:= - 2 \log(\text{max value of likelihood in $m$}) + \log(n) \cdot (\text{number of parameters in $m$})
+\\
+&= n \log(2 \pi e) + n \log \left(\frac{\text{RSS(m)}}{n}\right) + \log(n) \cdot (p(m)+1).
+\end{align}
+
+We can again drop the constant term. How does BIC penalize complexity $p(m)$ compared to AIC?
+
+* Mallows $C_p$: Suppose that the data did come from the model $y = X\beta + \epsilon$, $\epsilon \sim \mathcal{N}(0, I_{n\times n})$. The idea behind the Mallows $C_p$ score is that the $C_p$ score is a proxy of the quantity 
+
+\begin{align}
+E\|H(m) Y - X\beta\|^2
+\end{align}
+
+We would like to choose $m$ to minimize this expectation. In class, we computed this to be 
+\begin{align}
+E\|H(m) Y - X\beta\|^2= \sigma^2(p(m) + 1) + \beta^T X^T(I - H(m))X\beta
+\end{align}
+
+**Show that this equals $\sigma^2(p(M) + 1)$ when $M$ is the full model**. 
+
+
+We claim that 
+
+\begin{align}
+RSS(m) - \sigma^2(n - 2 - 2p(m))
+\end{align}
+is an unbiased estimate of the expectation. **Show.** 
+
+We divide through by $\sigma^2$, and replace $\sigma^2$ with $\hat\sigma^2$. This results in Mallow's $C_p$ score: 
+
+\begin{align}
+C_p(m) := \frac{RSS(m)}{\hat\sigma^2} - (n - 2 - 2p(m))
+\end{align}
+
+
+So now, to do model selection, we pick our favorite criteria, and optimize the criterion in two stages: 
+
+1. For each subset size $p' = 0, ..., p$, find the model with exactly $p'$ explainatory variables with the smallest RSS (for these criteria, why does it suffice to just minimize RSS in step 1?). 
+
+2. For these $p + 1$ models, pick the one with the smallest criterion (AIC/BIC/etc) value. 
+
+## Supernova dataset
+
+We consider a dataset from Brad Efron and Trevor Hastie's book, *Computer Age Statistical Inference*. The data measures the brightness of 39 supernova, as a function of $p = 10$ spectral energies. Note that the brightnesses (the $y$) have been centered to have zero mean, and the $x$'s are scaled to have zero mean and unit variance. 
+
+```{r}
+# load data 
+supernova <- read.table("http://web.stanford.edu/~hastie/CASI_files/DATA/supernova.txt", header=TRUE)
+
+head(supernova)
+```
+
+The goal is to use a regression model to predict supernova brightness from the spectral energies. Lets hold out 10 of the 39 observations as a test set. 
+```{r}
+# Do train/test split
+set.seed(4534534)
+sample_10 <- sample(dim(supernova)[1], 10)
+
+supernova_train <- supernova[-sample_10, ]
+supernova_test <- supernova[sample_10, ]
+```
+
+```{r}
+# fit on training set 
+lm_fit <- lm(Magnitude ~ . -1, data = supernova_train)
+
+# examine predictive accuracy on the training set 
+predict_train_data <- predict(lm_fit, data = supernova_train)
+R2_train <- cor(predict_train_data, supernova_train[, 'Magnitude'])**2
+cat('R^2 on training data: ', R2_train)
+```
+Not bad, right?
+```{r}
+# plot observed vs predicted values in the training set 
+ggplot() + 
+  geom_point(aes(x = predict_train_data, y = supernova_train[, 'Magnitude']), 
+             color = 'blue') + 
+  ylab('observed magnitude') + xlab('predicted magnitude') + 
+  geom_abline(slope = 1, color = 'red')
+```
+
+```{r}
+pred_test_data <- predict(lm_fit, newdata = supernova_test)
+R2_test <- cor(pred_test_data, supernova_test[, 'Magnitude'])**2
+# get R^2 of test data  
+cat('R^2 on test data: ', R2_test)
+
+```
+
+What happened?
+
+Let us do variable selection and search for which of the 10 spectal energies are actually important for prediction. We will use the ``leaps`` package in R, and use Mallow's Cp score. 
+
+```{r}
+leaps_output <- leaps(y = supernova$Magnitude, x = supernova[, 1:10], 
+                      method = 'Cp', nbest = 1, int = FALSE)
+
+print(leaps_output)
+```
+
+Using the selected explainatory variables, lets fit again using the training data. 
+```{r}
+# Probably an easier way to do this. 
+# was too lazy to dig into leaps documentation
+# so I'll do it myself
+# This function returns a dataframe with only the X selected columns (and the y)
+get_selected_x_from_leaps <- function(leaps_ouput, supernova){
+  # get the columns that minimizes Cp
+  which_model <- which.min(leaps_output$Cp)
+  which_X_columns <- leaps_output$which[which_model, ]
+  
+  # create new dataset with only selected columns
+  supernova_selected_x <- cbind(supernova[, c(which_X_columns)], supernova[, 11])
+  names(supernova_selected_x)[length(names(supernova_selected_x))] <- 'Magnitude'
+  
+  return(supernova_selected_x)
+}
+
+# get selected fit
+selected_supernova_train <- get_selected_x_from_leaps(leaps_ouput, supernova_train)
+lm_fit_selected <- lm(Magnitude ~ . -1, data = selected_supernova_train)
+
+# check R^2 on train data
+pred_train_data <- predict(lm_fit_selected, newdata = selected_supernova_train)
+R2_train <- cor(pred_train_data, selected_supernova_train[, 'Magnitude'])**2
+cat('R^2 on training data: ', R2_train)
+```
+The fit on the test data with selected columns?
+```{r}
+# check R^2 on test data 
+selected_supernova_test <- get_selected_x_from_leaps(leaps_ouput, supernova_test)
+pred_test_data <- predict(lm_fit_selected, newdata = selected_supernova_test)
+R2_test <- cor(pred_test_data, selected_supernova_test[, 'Magnitude'])**2
+cat('R^2 on test data: ', R2_test)
+
+```

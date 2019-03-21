@@ -1,0 +1,73 @@
+1
+```{r}
+library(e1071)
+library(car)
+```
+
+```{r}
+beta0 = 1
+beta1 = 20
+x = runif(100,0,1)
+e=rnorm(100,0,sd = beta0+beta1*x)
+
+y = beta0+beta1*x+e
+lmod = lm(y ~ x)
+plot(lmod$residuals ~ lmod$fitted.values)
+```
+b
+```{r}
+ly = log10(y + 1 - min(y))
+lmodb = lm(ly ~ x)
+plot(lmodb$residuals ~ x)
+#taking log seems not useful
+# xnew = rnorm(100,x,sd = beta0+beta1*x)
+# lmodb = lm(y ~ xnew)
+# plot(lmodb,which=3)
+```
+c
+```{r}
+e = rnorm(300)
+X = replicate(3, runif(300)) 
+y = 3+X[,1]+5*X[,2]+4*2.71828^(2*X[,3]) + e
+x1 = X[,1]
+x2 = X[,2]
+x3 = X[,3]
+lmod = lm(y ~ x1+x2+x3)
+crPlots(lmod)
+```
+d.
+```{r}
+x3l = 2.7183^(2*x3)
+lmod = lm(y ~ x1+x2+x3l)
+crPlots(lmod)
+```
+
+2
+```{r}
+x1 = runif(100)
+x2 = -x1 + rnorm(100,sd=sqrt(0.01))
+y= x1 + x2 + rnorm(100, sd = sqrt(0.0001))
+summary(lm(y ~ x1))
+summary(lm(y ~ x1+x2))
+```
+```{r}
+y=women$height
+x=women$weight
+s= lm(y ~ x)
+summary(s)
+beta1 = s$coefficients[2];beta1
+beta1 *sd(x)/sd(y)
+cor(y,x)
+```
+```{r}
+library("datarium")
+data("marketing", package = "datarium")
+model <- lm(sales ~ youtube + facebook + newspaper, data = marketing)
+summary(model)
+sales=marketing$sales
+cor(model$fitted.values, sales)^2
+#R-squared = Explained variation / Total variation
+```
+
+
+
