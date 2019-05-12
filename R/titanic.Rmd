@@ -1,0 +1,182 @@
+```{r}
+library(PRROC)
+library(randomForest)
+library(glmnet)
+# randomForests cv
+library(rfUtilities)
+library(rpart)
+library(party)
+library(gbm)
+
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+```
+
+###Problem 1
+```{r}
+#feature engineering
+
+# Join together the test and train sets for easier feature engineering
+test$Survived <- NA
+combi <- rbind(train, test)
+
+# Convert to a string
+combi$Name <- as.character(combi$Name)
+
+# Engineered variable: Title
+combi$Title <- sapply(combi$Name, FUN=function(x) {strsplit(x, split='[,.]')[[1]][2]})
+combi$Title <- sub(' ', '', combi$Title)
+# Combine small title groups
+combi$Title[combi$Title %in% c('Mme', 'Mlle')] <- 'Mlle'
+combi$Title[combi$Title %in% c('Capt', 'Don', 'Major', 'Sir')] <- 'Sir'
+combi$Title[combi$Title %in% c('Dona', 'Lady', 'the Countess', 'Jonkheer')] <- 'Lady'
+# Convert to a factor
+combi$Title <- factor(combi$Title)
+
+# Engineered variable: Family size
+combi$FamilySize <- combi$SibSp + combi$Parch + 1
+
+# Engineered variable: Family
+combi$Surname <- sapply(combi$Name, FUN=function(x) {strsplit(x, split='[,.]')[[1]][1]})
+combi$FamilyID <- paste(as.character(combi$FamilySize), combi$Surname, sep="")
+combi$FamilyID[combi$FamilySize <= 2] <- 'Small'
+# Delete erroneous family IDs
+famIDs <- data.frame(table(combi$FamilyID))
+famIDs <- famIDs[famIDs$Freq <= 2,]
+combi$FamilyID[combi$FamilyID %in% famIDs$Var1] <- 'Small'
+# Convert to a factor
+combi$FamilyID <- factor(combi$FamilyID)
+
+# Fill in Age NAs
+summary(combi$Age)
+Agefit <- rpart(Age ~ Pclass + Sex + SibSp + Parch + Fare + Embarked + Title + FamilySize, 
+                data=combi[!is.na(combi$Age),], method="anova")
+combi$Age[is.na(combi$Age)] <- predict(Agefit, combi[is.na(combi$Age),])
+# Check what else might be missing
+summary(combi)
+# Fill in Embarked blanks
+summary(combi$Embarked)
+which(combi$Embarked == '')
+combi$Embarked[c(62,830)] = "S"
+combi$Embarked <- factor(combi$Embarked)
+# Fill in Fare NAs
+summary(combi$Fare)
+which(is.na(combi$Fare))
+combi$Fare[1044] <- median(combi$Fare, na.rm=TRUE)
+
+# New factor for Random Forests, only allowed <32 levels, so reduce number
+combi$FamilyID2 <- combi$FamilyID
+# Convert back to string
+combi$FamilyID2 <- as.character(combi$FamilyID2)
+combi$FamilyID2[combi$FamilySize <= 3] <- 'Small'
+# And convert back to factor
+combi$FamilyID2 <- factor(combi$FamilyID2)
+
+# combi$Ticket = NULL
+# combi$Surname = NULL
+# combi$Name = NULL
+# combi$Pclass = as.factor(combi$Pclass)
+# combi$SibSp = as.factor(combi$SibSp)
+# combi$Parch = as.factor(combi$Parch)
+# Split back into test and train sets
+train <- combi[1:891,]
+test <- combi[892:1309,]
+```
+
+```{r}
+set.seed(415)
+fit <- randomForest(as.factor(Survived) ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title + FamilySize + FamilyID2,
+                    data=train, importance=TRUE, ntree=2000)
+# Look at variable importance
+varImpPlot(fit)
+
+# test accuracy
+mean(fit$predicted == train$Survived)
+```
+
+```{r}
+# Now let's make a prediction and write a submission file
+Prediction <- predict(fit, test)
+
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "firstforest.csv", row.names = FALSE)
+```
+
+```{r}
+# Build condition inference tree Random Forest
+set.seed(415)
+fit <- cforest(as.factor(Survived) ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title + FamilySize + FamilyID,
+               data = train, controls=cforest_unbiased(ntree=100, mtry=3)) 
+preds = predict(fit, newdata=train, OOB=TRUE, type="response")
+mean(preds == train$Survived)
+
+# Now let's make a prediction and write a submission file
+Prediction <- predict(fit, newdata= test, OOB=TRUE, type = "response")
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "ciforest.csv", row.names = FALSE)
+```
+
+```{r}
+attach(train)
+# you probably would get an error if using data=train directly as below
+# Error in `levels<-`(`*tmp*`, value = as.character(levels)) : 
+#   factor level [2] is duplicated
+
+#https://stackoverflow.com/questions/25514484/error-in-r-gbm-function-when-cv-folds-0
+
+
+feature.names = c("Pclass", "Sex" , "Age" , "SibSp", "Parch",
+                  "Fare" , "Embarked" , "Title" , "FamilySize" , "FamilyID")
+
+train.features = combi[1:891,feature.names]
+test.features = combi[892:1309,feature.names]
+
+adaboost = gbm(Survived ~ Pclass + Sex + Age + SibSp + 
+               Parch + Fare + Embarked + Title + FamilySize + FamilyID, 
+               data=train.features, 
+               distribution="bernoulli",
+               n.trees =1000,
+               cv.folds = 5
+               )
+
+best.iter = gbm.perf(adaboost, method="cv")
+
+summary(adaboost)
+
+plot(adaboost ,i="Title")
+plot(adaboost ,i="Age")
+plot(adaboost, i="Fare")
+
+yhat.boost = predict(adaboost ,newdata=train.features,
+                    n.trees =1000,type='response')
+
+yhat = yhat.boost > 0.5
+mean(yhat == train$Survived)
+
+# Now let's make a prediction and write a submission file
+yhat.boost <- predict(adaboost, newdata= test.features,n.trees =126, type = "response")
+Prediction = as.numeric(yhat.boost > 0.5)
+
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "boost.csv", row.names = FALSE)
+
+```
+
+```{r}
+library(mlbench)
+library(gbm)
+data("PimaIndiansDiabetes2")
+mydata = PimaIndiansDiabetes2
+
+mydata$diabetes = as.numeric(mydata$diabetes)
+mydata = transform(mydata, diabetes=diabetes-1)
+head(mydata)
+
+gbm.model = gbm(diabetes~., data=mydata, shrinkage=0.01, distribution = 'bernoulli', cv.folds=5, n.trees=3000, verbose=F)
+best.iter = gbm.perf(gbm.model, method="cv")
+summary(gbm.model)
+plot.gbm(gbm.model, 1, best.iter)
+
+```
+
+

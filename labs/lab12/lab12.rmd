@@ -72,6 +72,21 @@ spam_data_test <- spam_data_test[, -2]
 head(spam_data)
 ```
 
+```{r}
+require(neuralnet)
+
+train.y = spam_data_train$spam
+train.x = spam_data_train[,-1]
+
+nn=neuralnet(spam~.,data=spam_data_train, hidden=60,act.fct = "logistic",
+                linear.output = FALSE)
+Predict=compute(nn,spam_data_test)
+prob <- Predict$net.result > 0.5
+mean(spam_preds_test == spam_data_test$spam)
+
+
+```
+
 We fit logistic regression: 
 ```{r}
 logistic_model <- glm(spam ~ ., data = spam_data_train, family = binomial)

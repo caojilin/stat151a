@@ -1,0 +1,18 @@
+dat = rnorm(50, 3, 1)
+
+#H0: u = 0
+u = 2.9
+#t-value
+t.s = (mean(dat)-u)/(var(dat)/sqrt(length(dat)))
+t.s
+#p-value
+p.val = 2*(1 - pt(t.s, df=length(dat)- 1))
+p.val
+
+plot(density(dat))
+abline(v=u,col='red')
+
+tt = rt(10000, df=49)
+plot(density(tt))
+abline(v=t.s, col='blue')
+
